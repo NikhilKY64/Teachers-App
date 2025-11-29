@@ -1,5 +1,5 @@
-('C:\\Users\\nikhi\\OneDrive\\Desktop\\Teacher App '
- 'v1.1\\build\\Teachers\\PYZ-00.pyz',
+('C:\\Users\\nikhi\\OneDrive\\Desktop\\Teacher '
+ 'App\\build\\Teachers\\PYZ-00.pyz',
  [('_compat_pickle',
    'C:\\Users\\nikhi\\AppData\\Local\\Programs\\Python\\Python310\\lib\\_compat_pickle.py',
    'PYMODULE'),
