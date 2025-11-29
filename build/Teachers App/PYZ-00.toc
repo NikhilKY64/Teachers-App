@@ -1,4 +1,4 @@
-('C:\\Users\\nikhi\\OneDrive\\Desktop\\Teachers App v1.4.2\\build\\Teachers '
+('C:\\Users\\nikhi\\OneDrive\\Desktop\\Teacher App v1.4.1\\build\\Teachers '
  'App\\PYZ-00.pyz',
  [('PIL',
    'C:\\Users\\nikhi\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\PIL\\__init__.py',
