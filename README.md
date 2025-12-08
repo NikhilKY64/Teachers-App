@@ -34,15 +34,11 @@ The Teachers App is a desktop application built using Python and Tkinter to help
 
 ### 1. Install AppSetup-v1.x.x.exe
 
-```sh
 Run the setup and save the app in Readable/Writable location.
-```
 
 ## Run the Application
 
-```sh
 Open the "Teachers App" shotcut created on desktop.
-```
 
 ---
 
