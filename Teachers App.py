@@ -11,6 +11,7 @@ import pandas as pd             # Data analysis library (Excel/CSV import/export
 from openpyxl import Workbook   # Excel file creation (used for export)
 import subprocess               # Running external processes (restart app, open files)
 import sys                      # System-specific parameters and functions (script path, interpreter)
+import ctypes                   # ShellExecute for elevation
 
 try:
     import customtkinter as ctk
@@ -464,6 +465,9 @@ class TeacherTimetableApp(BaseTk):
         file_menu.add_command(label="Backup Database...", command=self.backup_database)
         file_menu.add_separator()
         file_menu.add_command(label="Restart App", command=self.restart_app)
+        # Add option to run the installer uninstaller (Inno Setup creates `unins000.exe`)
+        file_menu.add_separator()
+        file_menu.add_command(label="Delete App", command=self.delete_app)
         file_menu.add_command(label="Exit", command=self.quit)
 
         # --- Edit ---
@@ -545,6 +549,58 @@ class TeacherTimetableApp(BaseTk):
             messagebox.showinfo("Backup Complete", f"Backup saved to:\n{path}")
         except Exception as e:
             messagebox.showerror("Backup Failed", str(e))
+
+    def delete_app(self):
+        """Launch Inno Setup uninstaller `unins000.exe` from the application folder.
+
+        Behaviour (file-only):
+        - Confirm with the user using messagebox
+        - Look for `unins000.exe` next to the running executable (supports PyInstaller)
+        - If missing, show an error directing user to Windows Settings
+        - If found, launch elevated with ShellExecute and quit after a short delay
+        """
+        try:
+            # 1) Confirm
+            confirm = messagebox.askyesno("Uninstall", "This will uninstall the application. Continue?")
+            if not confirm:
+                return
+
+            # 2) Locate application directory (support PyInstaller)
+            if getattr(sys, 'frozen', False):
+                app_dir = os.path.dirname(sys.executable)
+            else:
+                # When running as script
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+
+            unins_path = os.path.join(app_dir, 'unins000.exe')
+
+            # 3) If missing, show explicit message
+            if not os.path.exists(unins_path):
+                messagebox.showerror("Uninstaller missing", "Uninstaller missing. Please uninstall from Windows Settings → Apps.")
+                return
+
+            # 4) Launch with elevation using ShellExecute
+            try:
+                ctypes.windll.shell32.ShellExecuteW(None, 'runas', unins_path, None, None, 1)
+            except Exception:
+                # Fallback to simple spawn if ShellExecute fails
+                try:
+                    subprocess.Popen([unins_path])
+                except Exception:
+                    messagebox.showerror('Delete App', 'Failed to launch uninstaller.')
+                    return
+
+            # 5) Close the app after a short delay so uninstaller can remove files
+            try:
+                self.after(300, lambda: (self.quit(), os._exit(0)))
+            except Exception:
+                try:
+                    self.quit()
+                    os._exit(0)
+                except Exception:
+                    pass
+        except Exception as e:
+            messagebox.showerror('Delete App Failed', str(e))
 
     def toggle_toolbar(self):
         """Toggle visibility of the toolbar / main buttons (old layout)."""
