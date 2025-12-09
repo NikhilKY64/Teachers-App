@@ -18,18 +18,17 @@ The Teachers App is a desktop application built using Python and Tkinter to help
 
 ---
 
-## Technologies Used
+## Keyboard Shortcuts
 
-| Component | Technology |
-|----------|------------|
-| Language | Python 3.10.10 |
-| UI Library | Tkinter / ttk |
-| Optional UI | CustomTkinter |
-| Database | SQLite (database.db) |
-| Excel Support | pandas + openpyxl |
+| Shortcut | Action |
+|----------|--------|
+| Ctrl + S | Focus search bar |
+| Ctrl + P | Print timetable |
+| Ctrl + Plus / Minus | Increase or decrease timetable text size |
+| F11 | Toggle fullscreen |
+| ESC | Exit fullscreen |
 
 ---
-
 ## Installation
 
 ### 1. Install AppSetup-v1.x.x.exe
@@ -62,18 +61,28 @@ Teachers-App/
 ```
 
 ---
+## How to Use
 
-## Backup
+1. Start the app  
+2. Select a teacher from the left panel  
+3. The timetable will appear on the right  
+4. Use the menu bar to:
+   - Import / Export Excel files  
+   - Adjust timetable size  
+   - Change theme  
+   - Backup database  
 
-- Clicking the backup option generates a file with this format:
+Tip: Use the search box to quickly find teachers.
+
+---
+
+## Backup Information
+
+When using the backup option, the app will generate files formatted as:
 
 ```
 database_bkp_YYYY-MM-DD_HH-MM.db
 ```
-
----
-
-## Etc.
 
 ---
 
