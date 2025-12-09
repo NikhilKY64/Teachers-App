@@ -37,7 +37,7 @@ Run the setup and save the app in Readable/Writable location.
 
 ## Run the Application
 
-Open the "Teachers App" shotcut created on desktop.
+Open the "Teachers App.exe" , shotcut created on desktop.
 
 ---
 
