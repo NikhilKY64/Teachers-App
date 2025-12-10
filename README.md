@@ -11,16 +11,16 @@ A comprehensive desktop application for managing teacher timetables and scheduli
 ### **Teacher Management**
 - ✅ Add, edit, and delete teacher records
 - ✅ Store teacher details: name, degree, main subject, and subjects taught
-- ✅ Pin/star favorite teachers for quick access
+- ✅ Pin/star teachers for quick access
 - ✅ Live search functionality to filter teachers by name or subject
-- ✅ Bulk delete mode for removing multiple teachers at once
+- ✅ delete mode for removing multiple teachers at once
 - ✅ Import teachers from Excel files
 
 ### **Timetable Management**
 - ✅ Create and manage class schedules (8 periods per day)
 - ✅ Support for 6 days per week (Monday-Saturday)
 - ✅ Add, edit, and delete class assignments
-- ✅ Import timetables from Excel or CSV files
+- ✅ Import timetables from Excel
 - ✅ Automatic period timing configuration (customizable)
 - ✅ Live status display showing current and next class for selected teacher
 
@@ -136,8 +136,9 @@ The installer will:
 - Useful for frequently accessed teachers
 
 #### Deleting Teachers
-- Single delete: Select teacher → **Edit → Delete Teacher**
-- Bulk delete: Click checkboxes next to multiple teachers → **Confirm Delete**
+- delete: ***Edit(Top of the App) → Click checkboxe(s) → Confirm Delete***
+- **OR**
+- delete: ***delete → Click checkboxe(s) → Confirm Delete***
 
 ### **Managing Timetables**
 
@@ -154,7 +155,7 @@ The installer will:
 - Click on any cell in the timetable to modify or delete that class
 
 #### Importing Timetable from Excel
-1. Prepare an Excel/CSV file with columns: **Day**, **Period**, **Class**, **Subject** (optional)
+1. Prepare an Excel file with columns: **Day**, **Period**, **Class**, **Subject**
 2. Select a teacher
 3. Click **File → Import Timetable from Excel**
 4. Select your file
@@ -260,12 +261,12 @@ Always maintain a backup of `database.db`:
 | `Ctrl+F` | Focus search bar |
 | `Ctrl+A` | Add new teacher |
 | `Ctrl+E` | Edit selected teacher |
-| `Ctrl+D` | Delete teacher / Toggle bulk delete mode |
+| `Ctrl+D` | Delete teacher |
 | `Ctrl+P` | Print timetable |
-| `Ctrl+Plus` | Increase timetable font size |
-| `Ctrl+Minus` | Decrease timetable font size |
+| `Ctrl+ +` | Increase timetable font size |
+| `Ctrl+ -` | Decrease timetable font size |
 | `F11` | Toggle fullscreen |
-| `Escape` | Exit fullscreen |
+| `Esc` | Exit fullscreen |
 | `↑` / `↓` | Navigate teachers list |
 | `Alt+F` | Open File menu |
 | `Alt+E` | Open Edit menu |
@@ -362,24 +363,6 @@ Edit via **Edit → Add Period** or **File → Edit Period Timings**.
 - Improved search with real-time filtering
 - Database backup feature
 
-### **Previous Versions**
-- v1.5.0 - Initial release
-- Multiple refinements and bug fixes
-
----
-
-## 🤝 Contributing
-
-Found a bug or want to suggest a feature? 
-- Report issues via GitHub
-- Provide detailed description and steps to reproduce
-
----
-
-## 📄 License
-
-This project is created by NikhilKY64. All rights reserved.
-
 ---
 
 ## 👨‍💻 Author
@@ -394,20 +377,7 @@ GitHub: [@NikhilKY64](https://github.com/NikhilKY64)
 For issues, questions, or suggestions:
 1. Check this README first
 2. Review the Help menu within the app (**Help → How to Use**)
-3. Contact the developer via GitHub
-
----
-
-## 🙏 Acknowledgments
-
-- Built with Python and Tkinter
-- Uses pandas, openpyxl, and reportlab libraries
-- Icons and design inspired by modern UI frameworks
-
----
-
-**Last Updated:** December 2025  
-**Status:** Active Development
+3. Contact the developer via GitHub or gmail
 
 ---
 
