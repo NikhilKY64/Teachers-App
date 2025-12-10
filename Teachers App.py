@@ -4428,7 +4428,7 @@ Features:
 • View and edit timetables
 • Period timing management
 • Automatic highlighting of current/next class
-• Color-coded subjects
+• Import/export functionality
 
 © 2025 Teacher Timetable App"""
         # Use a larger custom dialog instead of messagebox
@@ -4440,7 +4440,7 @@ Features:
             dlg.grab_set()
         except Exception:
             pass
-        frm = ttk.Frame(dlg, padding=12)
+        frm = ttk.Frame(dlg, padding=22)
         frm.pack(fill=tk.BOTH, expand=True)
         txt = tk.Text(frm, wrap='word', font=("Segoe UI", 11), height=12)
         txt.insert('1.0', about_text)
@@ -4513,18 +4513,27 @@ F11 - Toggle fullscreen mode
 Esc - Exit fullscreen mode
 
 Global / Keyboard:
-Ctrl + S - Focus search box
-Ctrl + P - Print timetable for selected teacher (also in Settings menu)
-Ctrl + T - Toggle pin/unpin selected teacher
-Ctrl + + / Ctrl + = / Ctrl + KP_Add - Increase timetable size
-Ctrl + - / Ctrl + KP_Subtract - Decrease timetable size
-Up / Down - Navigate teacher list
+Ctrl+F   - Focus search bar 
+Ctrl+A   - Add new teacher 
+Ctrl+E   - Edit selected teacher 
+Ctrl+D   - Delete teacher 
+Ctrl+P  - Print timetable 
+Ctrl+ +  -Increase timetable font size 
+Ctrl+ -  -Decrease timetable font size 
+F11      -Toggle fullscreen 
+Esc      -Exit fullscreen 
+↑ / ↓    -Navigate teachers list 
+Alt+F    -Open File menu
+Alt+E    -Open Edit menu
+Alt+V    -Open View menu 
+Alt+T    -Open Tools menu 
+Alt+H    -Open Help menu 
 
 Mouse:
 • Left-click cell - Add/Edit period
 • Right-click cell - Show context menu (Edit/Delete)
 • Left-click teacher - Select teacher
-• Left-click row - Toggle select checkbox (bulk delete mode)"""
+• Left-click row - Toggle select checkbox"""
         # Use the simpler messagebox-style layout (older design)
         try:
             messagebox.showinfo("Keyboard Shortcuts", shortcuts_text)
