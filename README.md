@@ -377,14 +377,13 @@ GitHub: [@NikhilKY64](https://github.com/NikhilKY64)
 For issues, questions, or suggestions:
 1. Check this README first
 2. Review the Help menu within the app (**Help → How to Use**)
-3. Contact the developer via GitHub or gmail
+3. Contact the developer via GitHub
 
 ---
 
 ## Quick Links
 - 🏠 [Home](https://github.com/NikhilKY64/Teachers-App)
 - 🐛 [Report Bug](https://github.com/NikhilKY64/Teachers-App/issues)
-- ⭐ [Star this project](https://github.com/NikhilKY64/Teachers-App)
 
 ---
 
