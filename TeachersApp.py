@@ -570,8 +570,63 @@ class TeacherTimetableApp(BaseTk):
             self.menubar = menubar
             # store menu refs in order: File, Edit, View, Tools, Help
             self._menu_refs = [file_menu, edit_menu, view_menu, tools_menu, help_menu]
+            # Add Attendance status cascade to menubar (shows counts and opens report)
+            try:
+                attendance_menu = tk.Menu(self.menubar, tearoff=0, font=menu_font)
+                attendance_menu.add_command(label="Open Attendance Report", command=self.attendance_report_window)
+                # Add a placeholder cascade; label will be updated by `update_attendance_status`
+                menubar.add_cascade(label="Attendance", menu=attendance_menu)
+                # store references for updates
+                self.attendance_menu = attendance_menu
+                self.attendance_menu_index = menubar.index("end")
+                # Populate initial counts
+                try:
+                    self.update_attendance_status()
+                except Exception:
+                    pass
+            except Exception:
+                pass
         except Exception:
             self._menu_refs = []
+
+    def update_attendance_status(self):
+        """Query today's attendance and update the menubar Attendance label.
+
+        Shows counts: Present / Absent / Unmarked (not yet marked).
+        """
+        try:
+            today = _dt_now.now().date().isoformat()
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            # present
+            cursor.execute("SELECT COUNT(*) FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'present'", (today,))
+            present = cursor.fetchone()[0] or 0
+            # absent
+            cursor.execute("SELECT COUNT(*) FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'absent'", (today,))
+            absent = cursor.fetchone()[0] or 0
+            # total teachers
+            cursor.execute("SELECT COUNT(*) FROM teachers")
+            total = cursor.fetchone()[0] or 0
+            # unmarked = total - (present + absent)
+            unmarked = max(0, total - (present + absent))
+            conn.close()
+
+            label = f"Attendance (P: {present} A: {absent} U: {unmarked})"
+            try:
+                # update the menubar cascade label
+                if getattr(self, 'menubar', None) and getattr(self, 'attendance_menu_index', None) is not None:
+                    self.menubar.entryconfig(self.attendance_menu_index, label=label)
+            except Exception:
+                pass
+
+            # schedule next update in 60 seconds
+            try:
+                if getattr(self, 'after', None):
+                    self.after(1000, self.update_attendance_status)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def backup_database(self):
         """Backup the application's SQLite database to a user-chosen location.
@@ -1152,14 +1207,14 @@ class TeacherTimetableApp(BaseTk):
             if row and row[0] in ("old", "new"):
                 self.layout_mode = row[0]
             else:
-                # default to new layout and persist
-                self.layout_mode = 'new'
+                # default to old layout and persist
+                self.layout_mode = 'old'
                 cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ("layout_mode", self.layout_mode))
                 conn.commit()
             conn.close()
         except Exception:
             # on error, ensure an attribute exists
-            self.layout_mode = 'new'
+            self.layout_mode = 'old'
 
     def apply_layout_mode(self):
         """Apply the loaded layout mode to the UI (show/hide buttons)."""
@@ -1172,7 +1227,7 @@ class TeacherTimetableApp(BaseTk):
             pass
 
     def get_app_version(self):
-        """Read VERSION.txt from the app folder and return its text, or default to v0.0.0."""
+        """Read VERSION.txt from the app folder and return its text, or default to v1.5.2."""
         try:
             base = os.path.dirname(os.path.abspath(__file__))
             version_file = os.path.join(base, "VERSION.txt")
@@ -1241,7 +1296,7 @@ class TeacherTimetableApp(BaseTk):
 
         # Show shortcut hint when hovering over the search box
         try:
-            self.search_entry.bind('<Enter>', lambda e: self._show_hint(e, 'Ctrl+S'))
+            self.search_entry.bind('<Enter>', lambda e: self._show_hint(e, 'Ctrl+S\nType # for commands'))
             self.search_entry.bind('<Leave>', lambda e: self._hide_tooltip())
         except Exception:
             pass
@@ -1791,28 +1846,275 @@ class TeacherTimetableApp(BaseTk):
     def filter_teachers(self, text):
         """Filter teachers shown in the treeview by name (case-insensitive).
 
-        This function is called on every <KeyRelease> from the search entry and
-        must accept the raw text string as its single argument.
+        Special case: "@duplicate" shows only teachers with duplicate names.
+        If no duplicates, do not show anything in the search box (no filtering).
         """
         # If placeholder text is visible, treat as empty
         if getattr(self, '_search_placeholder', None) and text == self._search_placeholder:
             text = ''
 
-        if not text:
-            # Restore full list
-            return self.load_teachers()
+        ts = text.strip()
+        # List of special commands
+        special_commands = ['#dup', '#absent', '#present', '#free', '#unmarked']
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        # case-insensitive search on name and main_subject
-        term_lower = f"%{text.lower()}%"
-        # Include pinned status so pinned teachers can be shown first in filtered results
-        cursor.execute(
-            "SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers WHERE LOWER(name) LIKE ? OR LOWER(main_subject) LIKE ? ORDER BY is_pinned DESC, LOWER(name) ASC",
-            (term_lower, term_lower)
-        )
-        teachers = cursor.fetchall()
-        conn.close()
+        # If typed text is a complete special command, execute it and close popup
+        if ts in special_commands or ts.startswith('#class:'):
+            # Close any open popup
+            if getattr(self, '_search_suggestion_popup', None):
+                try:
+                    self._search_suggestion_popup.destroy()
+                except Exception:
+                    pass
+                self._search_suggestion_popup = None
+            # Proceed to command handling below
+        elif ts.startswith('#') and ts:
+            # Show filtered suggestions
+            try:
+                self.show_search_command_suggestions(ts)
+            except Exception:
+                pass
+            return
+        else:
+            # Close popup if open
+            if getattr(self, '_search_suggestion_popup', None):
+                try:
+                    self._search_suggestion_popup.destroy()
+                except Exception:
+                    pass
+                self._search_suggestion_popup = None
+
+        # Special commands starting with '#'
+        tl = ts.lower()
+        # #dup -> duplicate names
+        if tl == "#dup":
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                # Find duplicate names (case-insensitive, trimmed)
+                cursor.execute("""
+                    SELECT LOWER(TRIM(name)) as lower_name
+                    FROM teachers
+                    GROUP BY LOWER(TRIM(name))
+                    HAVING COUNT(*) > 1
+                """)
+                duplicate_names = [row[0] for row in cursor.fetchall()]
+                conn.close()
+
+                if not duplicate_names:
+                    # No duplicates, do not show anything (no filtering)
+                    return
+
+                # Filter teachers whose name is in the duplicate list
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                placeholders = ','.join(['?'] * len(duplicate_names))
+                cursor.execute(f"""
+                    SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned
+                    FROM teachers
+                    WHERE LOWER(TRIM(name)) IN ({placeholders})
+                    ORDER BY is_pinned DESC, LOWER(name) ASC
+                """, duplicate_names)
+                teachers = cursor.fetchall()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter duplicates: {str(e)}")
+                self.load_teachers()
+                return
+        # #absent -> teachers marked absent today
+        elif tl == "#absent":
+            try:
+                today = _dt_now.now().date().isoformat()
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT t.id, t.name, t.main_subject, COALESCE(t.is_pinned,0) as is_pinned "
+                    "FROM teacher_attendance a JOIN teachers t ON a.teacher_id = t.id "
+                    "WHERE a.date = ? AND LOWER(a.status) = 'absent' ORDER BY is_pinned DESC, LOWER(t.name) ASC",
+                    (today,)
+                )
+                teachers = cursor.fetchall()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter absent teachers: {str(e)}")
+                self.load_teachers()
+                return
+        # #present -> teachers marked present today
+        elif tl == "#present":
+            try:
+                today = _dt_now.now().date().isoformat()
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT t.id, t.name, t.main_subject, COALESCE(t.is_pinned,0) as is_pinned "
+                    "FROM teacher_attendance a JOIN teachers t ON a.teacher_id = t.id "
+                    "WHERE a.date = ? AND LOWER(a.status) = 'present' ORDER BY is_pinned DESC, LOWER(t.name) ASC",
+                    (today,)
+                )
+                teachers = cursor.fetchall()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter present teachers: {str(e)}")
+                self.load_teachers()
+                return
+        # #unmarked -> teachers whose attendance for today is not recorded
+        elif tl == "#unmarked":
+            try:
+                today = _dt_now.now().date().isoformat()
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                # Select teachers who do NOT have an attendance record for today
+                cursor.execute(
+                    "SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned "
+                    "FROM teachers WHERE id NOT IN (SELECT teacher_id FROM teacher_attendance WHERE date = ?) "
+                    "ORDER BY is_pinned DESC, LOWER(name) ASC",
+                    (today,)
+                )
+                teachers = cursor.fetchall()
+                conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter unmarked teachers: {str(e)}")
+                self.load_teachers()
+                return
+        # #free -> teachers who are currently free (no class in current period)
+        elif tl == "#free":
+            try:
+                # Get current time and determine which period is happening now
+                now = _dt_now.now()
+                current_time = now.time()
+                dayname = now.strftime('%A')
+                
+                # Find the current period based on period_times
+                current_period = None
+                for period_num, (start_time, end_time) in self.period_times.items():
+                    if start_time <= current_time < end_time:
+                        current_period = period_num
+                        break
+                
+                if current_period is None:
+                    # Not in any period right now, show all teachers
+                    self.load_teachers()
+                    return
+                
+                # Get table name based on mode
+                table_name = 'timetable_5' if getattr(self, 'timetable_mode', '8') == '5' else 'timetable'
+                
+                # Find teachers who have a class during this period
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute(
+                    f"SELECT DISTINCT teacher_id FROM {table_name} "
+                    "WHERE LOWER(TRIM(day_of_week)) = ? AND period_number = ? AND class_name NOT IN ('FREE', '')",
+                    (dayname.lower(), current_period)
+                )
+                busy_ids = set(row[0] for row in cursor.fetchall())
+                conn.close()
+
+                # Only include teachers who are explicitly marked Present today
+                today = now.date().isoformat()
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                # present_ids: teachers marked present today
+                cursor.execute("SELECT teacher_id FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'present'", (today,))
+                present_ids = set(r[0] for r in cursor.fetchall())
+                conn.close()
+
+                # If nobody is marked present, show nothing (user asked to exclude unmarked)
+                if not present_ids:
+                    teachers = []
+                else:
+                    # Get all teachers and filter those who are present and not busy
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers ORDER BY is_pinned DESC, LOWER(name) ASC")
+                    all_teachers = cursor.fetchall()
+                    conn.close()
+
+                    teachers = [t for t in all_teachers if t[0] not in busy_ids and t[0] in present_ids]
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter free teachers: {str(e)}")
+                self.load_teachers()
+                return
+        # #class:<name> -> teachers who teach the given class (normalize class name)
+        elif tl.startswith('#class:'):
+            try:
+                target = ts.split(':', 1)[1]
+                # normalize by removing non-alnum and lowercasing
+                import re as _re
+                norm_target = _re.sub(r'[^A-Za-z0-9]', '', target).lower()
+                table_name = 'timetable_5' if getattr(self, 'timetable_mode', '8') == '5' else 'timetable'
+
+                # determine current period and day
+                now = _dt_now.now()
+                current_time = now.time()
+                dayname = now.strftime('%A')
+                current_period = None
+                for period_num, (start_time, end_time) in self.period_times.items():
+                    if start_time <= current_time < end_time:
+                        current_period = period_num
+                        break
+
+                # If not in a current period, query for any period today
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                if current_period is not None:
+                    cursor.execute(f"SELECT teacher_id, class_name FROM {table_name} WHERE class_name IS NOT NULL AND period_number = ? AND LOWER(TRIM(day_of_week)) = ?", (current_period, dayname.lower()))
+                else:
+                    cursor.execute(f"SELECT teacher_id, class_name FROM {table_name} WHERE class_name IS NOT NULL AND LOWER(TRIM(day_of_week)) = ?", (dayname.lower(),))
+                rows = cursor.fetchall()
+                conn.close()
+
+                matching_ids = set()
+                for tid, cname in rows:
+                    if not cname:
+                        continue
+                    norm_c = _re.sub(r'[^A-Za-z0-9]', '', str(cname)).lower()
+                    if norm_c == norm_target:
+                        matching_ids.add(tid)
+                if not matching_ids:
+                    teachers = []
+                else:
+                    # Only include teachers who are explicitly marked Present today
+                    today = now.date().isoformat()
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT teacher_id FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'present'", (today,))
+                    present_ids = set(r[0] for r in cursor.fetchall())
+                    conn.close()
+
+                    # Filter matching_ids to only present teachers
+                    matching_ids = matching_ids & present_ids
+                    if not matching_ids:
+                        teachers = []
+                    else:
+                        # Fetch teacher rows
+                        conn = sqlite3.connect(self.db_path)
+                        cursor = conn.cursor()
+                        placeholders = ','.join(['?'] * len(matching_ids))
+                        cursor.execute(f"SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers WHERE id IN ({placeholders}) ORDER BY is_pinned DESC, LOWER(name) ASC", tuple(matching_ids))
+                        teachers = cursor.fetchall()
+                        conn.close()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to filter by class: {str(e)}")
+                self.load_teachers()
+                return
+        else:
+            # Normal filtering logic
+            if not text:
+                # Restore full list
+                return self.load_teachers()
+
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            # case-insensitive search on name and main_subject
+            term_lower = f"%{text.lower()}%"
+            # Include pinned status so pinned teachers can be shown first in filtered results
+            cursor.execute(
+                "SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers WHERE LOWER(name) LIKE ? OR LOWER(main_subject) LIKE ? ORDER BY is_pinned DESC, LOWER(name) ASC",
+                (term_lower, term_lower)
+            )
+            teachers = cursor.fetchall()
+            conn.close()
 
         # Clear treeview
         for item in self.teachers_tree.get_children():
@@ -1825,7 +2127,90 @@ class TeacherTimetableApp(BaseTk):
             self.visible_teacher_ids.append(teacher_id)
             tag = 'evenrow' if idx % 2 == 0 else 'oddrow'
             pin_marker = "★" if is_pinned else ""
-            self.teachers_tree.insert("", tk.END, iid=teacher_id, values=("", name, main_subject), tags=(tag,))
+            # If filtering unmarked, append marker
+            display_name = f"{pin_marker}{name}"
+            try:
+                if tl == '#unmarked':
+                    display_name = f"{display_name} (unmarked)"
+            except Exception:
+                pass
+            self.teachers_tree.insert("", tk.END, iid=teacher_id, values=("", display_name, main_subject), tags=(tag,))
+
+    def show_search_command_suggestions(self, prefix='#'):
+        """Show a small popup with available search commands filtered by prefix.
+
+        The popup lists commands starting with prefix and lets the user click one to insert
+        it into the search box.
+        """
+        # Always destroy existing popup to update content
+        if getattr(self, '_search_suggestion_popup', None):
+            try:
+                self._search_suggestion_popup.destroy()
+            except Exception:
+                pass
+
+        popup = tk.Toplevel(self)
+        self._search_suggestion_popup = popup
+        popup.wm_overrideredirect(False)
+        popup.transient(self)
+        popup.title("Search Commands")
+
+        # Position the popup under the search entry
+        try:
+            x = self.search_entry.winfo_rootx()
+            y = self.search_entry.winfo_rooty() + self.search_entry.winfo_height()
+            popup.geometry(f"300x350+{x}+{y}")
+        except Exception:
+            pass
+
+        frm = ttk.Frame(popup, padding=8)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        ttk.Label(frm, text="Commands", font=("Segoe UI", 12, "bold")).pack(anchor='w')
+
+        # Available commands list
+        all_cmds = [
+            ('#dup', 'Show duplicate teacher names'),
+            ('#absent', 'Show teachers marked absent today'),
+            ('#present', 'Show teachers marked present today'),
+            ('#free', 'Show teachers with a FREE period today'),
+            ('#unmarked', 'Show teachers whose attendance is not yet marked today'),
+            ('#class:<name>', 'Show teachers teaching the given class (e.g. #class:XI-E)')
+        ]
+        # Filter commands that start with prefix
+        cmds = [cmd for cmd in all_cmds if cmd[0].startswith(prefix)]
+        for cmd, desc in cmds:
+            b = ttk.Button(frm, text=f"{cmd} — {desc}", command=lambda c=cmd: self._apply_search_command(c))
+            b.pack(fill=tk.X, pady=4)
+
+        # Close popup when it loses focus
+        popup.bind('<FocusOut>', lambda e: self._close_search_suggestion_popup())
+
+        # Close popup when it loses focus
+        popup.bind('<FocusOut>', lambda e: self._close_search_suggestion_popup())
+
+    def _apply_search_command(self, cmd):
+        try:
+            # Insert command into search box and trigger filter
+            self.search_var.set(cmd)
+            # close popup first
+            self._close_search_suggestion_popup()
+            self.filter_teachers(self.search_var.get().strip())
+            # focus the search entry so user can continue editing
+            try:
+                self.search_entry.focus_set()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _close_search_suggestion_popup(self):
+        if getattr(self, '_search_suggestion_popup', None):
+            try:
+                self._search_suggestion_popup.destroy()
+            except Exception:
+                pass
+            self._search_suggestion_popup = None
 
     def _on_tree_motion(self, event):
         """Handle motion events on the treeview to show pin hint for starred teachers."""
@@ -2003,6 +2388,13 @@ class TeacherTimetableApp(BaseTk):
                 continue
         if max_period_in_data > max_periods:
             messagebox.showerror("Import Error", f"Timetable contains periods up to {max_period_in_data}, but current mode only supports up to {max_periods} periods. Please switch to the appropriate mode or correct the data.")
+            return
+
+        # Check for conflicts: duplicate (day, period) in the import data
+        grouped = df.groupby([day_col, period_col])
+        conflict_mask = grouped.size() > 1
+        if conflict_mask.any():
+            messagebox.showerror("Import Error", "Conflicts detected in import data: Multiple entries for the same Day and Period.\nImport aborted.")
             return
 
         # Determine table name based on mode
@@ -2220,6 +2612,14 @@ class TeacherTimetableApp(BaseTk):
                         continue
                 if max_period_in_data > max_periods:
                     messagebox.showerror("Import Error", f"Timetable contains periods up to {max_period_in_data}, but current mode only supports up to {max_periods} periods. Please switch to the appropriate mode or correct the data.")
+                    return
+
+                # Check for conflicts: duplicate (day, period) in the import data
+                from collections import Counter
+                keys = [(row.get(day_col, "").strip(), row.get(period_col, "").strip()) for row in rows]
+                counts = Counter(keys)
+                if any(count > 1 for count in counts.values()):
+                    messagebox.showerror("Import Error", "Conflicts detected in import data: Multiple entries for the same Day and Period.\nImport aborted.")
                     return
                 
                 teacher_id = self.selected_teacher_id
@@ -3650,7 +4050,7 @@ class TeacherTimetableApp(BaseTk):
             pass
         # Schedule next update in 60 seconds
         try:
-            self._status_after_id = self.after(60000, self.start_auto_update_status)
+            self._status_after_id = self.after(1000, self.start_auto_update_status)
         except Exception:
             self._status_after_id = None
 
@@ -5411,6 +5811,58 @@ class TeacherTimetableApp(BaseTk):
             pass
         conn.close()
         return sorted([s for s in subjects if s])
+
+    def check_duplicate_teachers(self):
+        """Secret feature: Check for duplicate teacher names in the database.
+        
+        Queries for names appearing more than once and displays them in a dialog.
+        Accessible via Ctrl+Alt+D shortcut.
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT LOWER(TRIM(name)) as lower_name, COUNT(*) as count
+                FROM teachers
+                GROUP BY LOWER(TRIM(name))
+                HAVING count > 1
+                ORDER BY count DESC, lower_name ASC
+            """)
+            duplicates = cursor.fetchall()
+            conn.close()
+            
+            if not duplicates:
+                return  # No duplicates, do nothing
+            
+            # Build message for dialog
+            msg = "Duplicate teacher names found:\n\n"
+            for lower_name, count in duplicates:
+                # Get one example name (capitalized)
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM teachers WHERE LOWER(TRIM(name)) = ? LIMIT 1", (lower_name,))
+                example_name = cursor.fetchone()[0]
+                conn.close()
+                msg += f"• {example_name}: {count} entries\n"
+            msg += "\nConsider merging or renaming duplicates for data integrity."
+            
+            # Show in a larger dialog for readability
+            dlg = tk.Toplevel(self)
+            dlg.title("Duplicate Teachers Found")
+            dlg.geometry("500x400")
+            dlg.transient(self)
+            dlg.grab_set()
+            
+            frm = ttk.Frame(dlg, padding=15)
+            frm.pack(fill=tk.BOTH, expand=True)
+            
+            lbl = ttk.Label(frm, text=msg, font=("Segoe UI", 11), justify="left", wraplength=450)
+            lbl.pack(anchor="w", pady=(0, 15))
+            
+            ttk.Button(frm, text="OK", command=dlg.destroy).pack(anchor="e")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to check duplicates: {str(e)}")
 
     def on_cell_click(self, day, period):
         """Called when a timetable cell is left-clicked: add or edit depending on if entry exists."""
