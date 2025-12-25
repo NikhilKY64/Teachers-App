@@ -30,8 +30,8 @@ class ClassStatusApp(ctk.CTk):
         self.appearance_mode = "System"
         ctk.set_appearance_mode(self.appearance_mode)        
         # Hardcoded Supabase credentials (replace with your actual values)
-        self.supabase_url = "https://neeozcpahsixsrolhxib.supabase.co"  # Replace with your Supabase URL
-        self.supabase_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5lZW96Y3BhaHNpeHNyb2xoeGliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY1NzE0NjEsImV4cCI6MjA4MjE0NzQ2MX0.NhnKH8u4Yt6sb7xoTz2MPIRqisDz0XVA_f-5M6vzOvg"  # Replace with your anon public key
+        self.supabase_url = "Supabase_URL"  # Replace with your Supabase URL
+        self.supabase_key = "Supabase_Key"  # Replace with your anon public key
         
         # Supabase client - will be set after login
         self.supabase = None
