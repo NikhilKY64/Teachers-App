@@ -15,6 +15,11 @@ import sys                      # System-specific parameters and functions (scri
 import ctypes                   # ShellExecute for elevation
 import copy                     # Deep copy for undo/redo
 import hashlib                  # Hashing for passwords
+try:
+    from supabase import create_client, Client
+except ImportError:
+    create_client = None
+    Client = None
 
 try:
     import customtkinter as ctk
@@ -93,13 +98,25 @@ class TeacherTimetableApp(BaseTk):
         # Database setup
         self.db_path = "database.db"
         self.create_database()
-        self.ensure_credentials()
         # Load persisted settings (e.g. layout_mode) from DB
         try:
             self.load_settings()
         except Exception:
             # If loading settings fails, default to 'new'
             self.layout_mode = 'new'
+        # Supabase setup
+        self.supabase_url = self.load_setting('supabase_url', '')
+        self.supabase_key = self.load_setting('supabase_key', '')
+        self.classroom_password = self.load_setting('classroom_password', 'password')
+        if self.supabase_url and self.supabase_key and create_client:
+            try:
+                self.supabase = create_client(self.supabase_url, self.supabase_key)
+                # Sync classrooms on startup
+                self.sync_classrooms_to_supabase()
+            except Exception:
+                self.supabase = None
+        else:
+            self.supabase = None
         # Configure ttk style
         # Initialize theme system then configure style and apply saved theme
         try:
@@ -108,18 +125,19 @@ class TeacherTimetableApp(BaseTk):
             self.themes = {}
         self.setup_style()
 
-        # Show login before proceeding
-        self.show_login()
-
-        # If not logged in, exit
-        if not getattr(self, 'logged_in', False):
-            import sys
-            sys.exit(0)
-
         # Store the theme to apply later after UI is built (if any)
         self._saved_theme = None
         
-        # Days and periods configuration
+        # Show login before proceeding
+        self.deiconify()
+        if not self.load_setting('disable_login', False):
+            self.ensure_credentials()
+            self.show_login()
+            # If not logged in, exit
+            if not getattr(self, 'logged_in', False):
+                sys.exit(0)
+        else:
+            self.logged_in = True
         self.days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         self.periods = list(range(1, 9))  # Periods 1 to 8
 
@@ -271,6 +289,7 @@ class TeacherTimetableApp(BaseTk):
         style.configure("Normal.TLabel", font=("Segoe UI", 14, "bold"))
         style.configure("Heading.TLabel", font=("Segoe UI", 18, "bold"))
         style.configure("TButton", font=("Segoe UI", 12))
+        style.configure("Dialog.TButton", font=("Segoe UI", 14))
         style.configure("TEntry", font=("Segoe UI", 12))
         # Increase tree font and row height for improved readability
         style.configure("Treeview", font=("Segoe UI", 14), rowheight=35)
@@ -546,7 +565,7 @@ class TeacherTimetableApp(BaseTk):
         # --- View ---
         view_menu = tk.Menu(menubar, tearoff=0, font=menu_font)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Layout Mode (Old/New)", command=self.toggle_layout_mode)
+        view_menu.add_command(label="Show Toolbar (On/Off)", command=self.toggle_layout_mode)
         view_menu.add_command(label="Adjust Timetable size", command=self.adjust_timetable_text_size_dialog)
         view_menu.add_command(label="Dark mode (OLED)", command=lambda: self.apply_theme('oled'))
         view_menu.add_separator()
@@ -557,23 +576,27 @@ class TeacherTimetableApp(BaseTk):
         # --- Tools ---
         tools_menu = tk.Menu(menubar, tearoff=0, font=menu_font)
         menubar.add_cascade(label="Tools", menu=tools_menu)
-        self.tools_menu = tools_menu
         # tools_menu.add_command(label="Edit Period Timings", command=self.edit_period_timings_dialog)
         tools_menu.add_command(label="Change Blink Interval", command=self.change_blink_interval_dialog)
         tools_menu.add_command(label="Manage Colors", command=self.manage_colors_dialog)
         tools_menu.add_separator()
-        tools_menu.add_command(label="Change Password", command=self.change_password_dialog)
-        if self.load_setting('disable_login', False):
-            tools_menu.add_command(label="Enable Password", command=self.enable_login)
-        else:
-            tools_menu.add_command(label="Disable Password", command=self.disable_login)
-        tools_menu.add_separator()
-        # Mode switch commands
-        # tools_menu.add_command(label="Apply 5-Period Mode", command=self.apply_5_period_mode)
-        # tools_menu.add_command(label="Apply 8-Period Mode", command=self.apply_8_period_mode)
-        # tools_menu.add_separator()
         tools_menu.add_command(label="Attendance Report", command=self.attendance_report_window)
         tools_menu.add_command(label="Delete Attendance", command=self.delete_attendance_window)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Add Classroom", command=self.add_classroom_dialog)
+        tools_menu.add_command(label="Manage Classrooms", command=self.manage_classrooms_dialog)
+
+        # --- Settings ---
+        settings_menu = tk.Menu(menubar, tearoff=0, font=menu_font)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Change Password", command=self.change_password_dialog)
+        if self.load_setting('disable_login', False):
+            settings_menu.add_command(label="Enable Password", command=self.enable_login)
+        else:
+            settings_menu.add_command(label="Disable Password", command=self.disable_login)
+        settings_menu.add_separator()
+        settings_menu.add_command(label="Set Supabase Settings", command=self.set_supabase_settings_dialog)
+        settings_menu.add_command(label="View Reached Logs", command=self.view_reached_logs)
 
         # --- Help ---
         help_menu = tk.Menu(menubar, tearoff=0, font=menu_font)
@@ -585,8 +608,8 @@ class TeacherTimetableApp(BaseTk):
         # Keep references to menus for keyboard shortcuts that post menus
         try:
             self.menubar = menubar
-            # store menu refs in order: File, Edit, View, Tools, Help
-            self._menu_refs = [file_menu, edit_menu, view_menu, tools_menu, help_menu]
+            # store menu refs in order: File, Edit, View, Tools, Settings, Help
+            self._menu_refs = [file_menu, edit_menu, view_menu, tools_menu, settings_menu, help_menu]
             # Add Attendance status cascade to menubar (shows counts and opens report)
             try:
                 attendance_menu = tk.Menu(self.menubar, tearoff=0, font=menu_font)
@@ -606,26 +629,13 @@ class TeacherTimetableApp(BaseTk):
         except Exception:
             self._menu_refs = []
 
-    def update_tools_menu(self):
-        """Update the Tools menu to reflect current disable_login setting."""
-        self.tools_menu.delete(0, tk.END)
-        self.tools_menu.add_command(label="Change Blink Interval", command=self.change_blink_interval_dialog)
-        self.tools_menu.add_command(label="Manage Colors", command=self.manage_colors_dialog)
-        self.tools_menu.add_separator()
-        self.tools_menu.add_command(label="Change Password", command=self.change_password_dialog)
-        if self.load_setting('disable_login', False):
-            self.tools_menu.add_command(label="Enable Password", command=self.enable_login)
-        else:
-            self.tools_menu.add_command(label="Disable Password", command=self.disable_login)
-        self.tools_menu.add_separator()
-        self.tools_menu.add_command(label="Attendance Report", command=self.attendance_report_window)
-        self.tools_menu.add_command(label="Delete Attendance", command=self.delete_attendance_window)
-
     def update_attendance_status(self):
         """Query today's attendance and update the menubar Attendance label.
 
         Shows counts: Present / Absent / Unmarked (not yet marked).
         """
+        if not self.winfo_exists():
+            return
         try:
             today = _dt_now.now().date().isoformat()
             conn = sqlite3.connect(self.db_path)
@@ -1001,13 +1011,12 @@ class TeacherTimetableApp(BaseTk):
         self.wait_window(dialog)
 
     def show_login(self):
-        if self.load_setting('disable_login', False):
-            self.logged_in = True
-            return
         dialog = tk.Toplevel(self)
         dialog.title("Login")
         dialog.geometry("400x150")
         dialog.resizable(False, False)
+        # Allow closing the dialog to exit the app
+        dialog.protocol("WM_DELETE_WINDOW", lambda: dialog.destroy())
         # Center the dialog
         dialog.update_idletasks()
         screen_width = self.winfo_screenwidth()
@@ -1122,15 +1131,12 @@ class TeacherTimetableApp(BaseTk):
     def disable_login(self):
         """Disable password login requirement."""
         self.save_setting('disable_login', True)
-        self.update_tools_menu()
-        messagebox.showinfo("Login Disabled", "Password login has been disabled.")
+        messagebox.showinfo("Login Disabled", "Password login has been disabled. Restart the app to apply changes.")
 
     def enable_login(self):
         """Re-enable password login requirement."""
         self.save_setting('disable_login', False)
-        self.update_tools_menu()
-        messagebox.showinfo("Login Enabled", "Password login has been enabled.")
-
+        messagebox.showinfo("Login Enabled", "Password login has been enabled. Restart the app to apply changes.")
 
     def load_period_times(self):
         """Load period timings from DB into `self.period_times`. If empty, populate DB from defaults."""
@@ -1195,12 +1201,9 @@ class TeacherTimetableApp(BaseTk):
             conn.close()
             if row and row[0] is not None:
                 val = row[0]
-                if val == 'True':
-                    return True
-                elif val == 'False':
-                    return False
-                else:
-                    return val
+                if isinstance(default, bool):
+                    return val.lower() == 'true'
+                return val
         except Exception:
             pass
         return default
@@ -1446,17 +1449,17 @@ class TeacherTimetableApp(BaseTk):
             pass
 
     def get_app_version(self):
-        """Read VERSION.txt from the app folder and return its text, or default to v1.5.4."""
+        """Read VERSION.txt from the app folder and return its text, or default to v2.0"""
         try:
             base = os.path.dirname(os.path.abspath(__file__))
             version_file = os.path.join(base, "VERSION.txt")
             if os.path.isfile(version_file):
                 with open(version_file, "r", encoding="utf-8") as f:
                     txt = f.read().strip()
-                    return txt if txt else "v1.5.4"
-            return "v1.5.4"
+                    return txt if txt else "v2.0"
+            return "v2.0"
         except Exception:
-            return "v1.5.4"
+            return "v2.0"
 
     def restart_app(self):
         """Restart the application."""
@@ -1471,7 +1474,6 @@ class TeacherTimetableApp(BaseTk):
             messagebox.showerror("Error", f"Failed to restart app: {e}")
     
     def create_basic_layout(self):
-        """Create the two-panel main layout"""
         """Create the two-panel main layout"""
         self.main_frame = ttk.Frame(self)
         # Remove outer horizontal padding so right panel can sit flush against window edge
@@ -1697,7 +1699,7 @@ class TeacherTimetableApp(BaseTk):
             bg="#DC2626", fg="#FFFFFF", font=("Segoe UI", 11, "bold"),
             activebackground="#B91C1C", cursor="hand2", padx=15, pady=6
         )
-
+        
         # Live status area for current/next class
         status_frame = ttk.Frame(details_frame)
         status_frame.pack(fill=tk.X, pady=(6, 0))
@@ -1753,9 +1755,32 @@ class TeacherTimetableApp(BaseTk):
         teachers = cursor.fetchall()
         conn.close()
 
+        # If class search after school, show a message and return empty
+        try:
+            if getattr(self, 'class_search_after_school', False):
+                # Clear treeview
+                for item in self.teachers_tree.get_children():
+                    self.teachers_tree.delete(item)
+                self.visible_teacher_ids = []
+                self.teachers_tree.insert("", tk.END, values=("", "School is over", ""), tags=('evenrow',))
+                return
+        except Exception:
+            # variable may not exist in other branches; ignore
+            pass
+
         # Clear treeview
         for item in self.teachers_tree.get_children():
             self.teachers_tree.delete(item)
+
+        # If class search after school, show a message and return empty
+        try:
+            if getattr(self, 'class_search_after_school', False):
+                self.visible_teacher_ids = []
+                self.teachers_tree.insert("", tk.END, values=("", "School is over", ""), tags=('evenrow',))
+                return
+        except Exception:
+            # variable may not exist in other branches; ignore
+            pass
 
         # Populate filtered results preserving alternating colors and checkbox column
         self.visible_teacher_ids = []
@@ -2285,7 +2310,6 @@ class TeacherTimetableApp(BaseTk):
                 import re as _re
                 norm_target = _re.sub(r'[^A-Za-z0-9]', '', target).lower()
                 table_name = 'timetable_5' if getattr(self, 'timetable_mode', '8') == '5' else 'timetable'
-
                 # determine current period and day
                 now = _dt_now.now()
                 current_time = now.time()
@@ -2296,46 +2320,55 @@ class TeacherTimetableApp(BaseTk):
                         current_period = period_num
                         break
 
-                # If not in a current period, query for any period today
+                # Flag to indicate outside school hours for class search
+                class_search_after_school = False
+
+                # Query logic based on time
                 conn = sqlite3.connect(self.db_path)
                 cursor = conn.cursor()
                 if current_period is not None:
+                    # During school hours: show teachers currently teaching this class
                     cursor.execute(f"SELECT teacher_id, class_name FROM {table_name} WHERE class_name IS NOT NULL AND period_number = ? AND LOWER(TRIM(day_of_week)) = ?", (current_period, dayname.lower()))
-                else:
-                    cursor.execute(f"SELECT teacher_id, class_name FROM {table_name} WHERE class_name IS NOT NULL AND LOWER(TRIM(day_of_week)) = ?", (dayname.lower(),))
-                rows = cursor.fetchall()
-                conn.close()
-
-                matching_ids = set()
-                for tid, cname in rows:
-                    if not cname:
-                        continue
-                    norm_c = _re.sub(r'[^A-Za-z0-9]', '', str(cname)).lower()
-                    if norm_c == norm_target:
-                        matching_ids.add(tid)
-                if not matching_ids:
-                    teachers = []
-                else:
-                    # Only include teachers who are explicitly marked Present today
-                    today = now.date().isoformat()
-                    conn = sqlite3.connect(self.db_path)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT teacher_id FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'present'", (today,))
-                    present_ids = set(r[0] for r in cursor.fetchall())
+                    rows = cursor.fetchall()
                     conn.close()
 
-                    # Filter matching_ids to only present teachers
-                    matching_ids = matching_ids & present_ids
+                    # Build matching teacher IDs from rows where class matches target
+                    matching_ids = set()
+                    for tid, cname in rows:
+                        if not cname:
+                            continue
+                        norm_c = _re.sub(r'[^A-Za-z0-9]', '', str(cname)).lower()
+                        if norm_c == norm_target:
+                            matching_ids.add(tid)
+
                     if not matching_ids:
                         teachers = []
                     else:
-                        # Fetch teacher rows
+                        # Only include teachers who are explicitly marked Present today
+                        today = now.date().isoformat()
                         conn = sqlite3.connect(self.db_path)
                         cursor = conn.cursor()
-                        placeholders = ','.join(['?'] * len(matching_ids))
-                        cursor.execute(f"SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers WHERE id IN ({placeholders}) ORDER BY is_pinned DESC, LOWER(name) ASC", tuple(matching_ids))
-                        teachers = cursor.fetchall()
+                        cursor.execute("SELECT teacher_id FROM teacher_attendance WHERE date = ? AND LOWER(status) = 'present'", (today,))
+                        present_ids = set(r[0] for r in cursor.fetchall())
                         conn.close()
+
+                        matching_ids = matching_ids & present_ids
+                        if not matching_ids:
+                            teachers = []
+                        else:
+                            # Fetch teacher rows
+                            conn = sqlite3.connect(self.db_path)
+                            cursor = conn.cursor()
+                            placeholders = ','.join(['?'] * len(matching_ids))
+                            cursor.execute(f"SELECT id, name, main_subject, COALESCE(is_pinned,0) as is_pinned FROM teachers WHERE id IN ({placeholders}) ORDER BY is_pinned DESC, LOWER(name) ASC", tuple(matching_ids))
+                            teachers = cursor.fetchall()
+                            conn.close()
+                else:
+                    # Outside school hours: per Option 2, show nothing and indicate school is over
+                    class_search_after_school = True
+                    rows = []
+                    conn.close()
+                    teachers = []
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to filter by class: {str(e)}")
                 self.load_teachers()
@@ -2373,7 +2406,7 @@ class TeacherTimetableApp(BaseTk):
             display_name = f"{pin_marker}{name}"
             try:
                 if tl == '#unmarked':
-                    display_name = f"{display_name} (unmarked)"
+                    display_name = f"{display_name}"
             except Exception:
                 pass
             self.teachers_tree.insert("", tk.END, iid=teacher_id, values=("", display_name, main_subject), tags=(tag,))
@@ -3283,7 +3316,8 @@ class TeacherTimetableApp(BaseTk):
                                 max_length = len(str(cell.value))
                         except Exception:
                             pass
-                    adjusted_width = min(max_length + 2, 50)
+                    adjusted_width = min(max_length + 2
+                                         , 50)
                     worksheet.column_dimensions[column_letter].width = adjusted_width
 
             messagebox.showinfo("Export Complete", f"Timetable for {teacher_name} exported to {file_path}")
@@ -4036,6 +4070,7 @@ class TeacherTimetableApp(BaseTk):
             right_spacer.pack(side='right', expand=True)
         except Exception as e:
             messagebox.showerror('Error', f'Failed to open selection dialog: {e}')
+
     def _generate_pdf_for_teachers(self, teacher_id_list, file_path):
         # Helper: produce a neat, table-based PDF using reportlab.platypus
         try:
@@ -4302,6 +4337,8 @@ class TeacherTimetableApp(BaseTk):
 
     def start_auto_update_status(self):
         """Start or restart the 1-minute auto-update for the status area."""
+        if not self.winfo_exists():
+            return
         # Cancel previous
         self.stop_auto_update_status()
         # Update immediately
@@ -4472,6 +4509,8 @@ class TeacherTimetableApp(BaseTk):
 
     def red_blink_highlight(self):
         """Toggle red blink applied to the button."""
+        if not self.winfo_exists():
+            return
         if not hasattr(self, 'current_highlight_btn') or self.current_highlight_btn is None:
             return
 
@@ -4547,6 +4586,8 @@ class TeacherTimetableApp(BaseTk):
 
     def blink_highlight(self):
         """Toggle blink applied to the inner button (the class text box)."""
+        if not self.winfo_exists():
+            return
         if not hasattr(self, 'current_highlight_btn') or self.current_highlight_btn is None:
             return
 
@@ -4582,6 +4623,8 @@ class TeacherTimetableApp(BaseTk):
 
     def start_auto_update_highlight(self):
         """Start or restart the 1-second auto-update for the highlight area."""
+        if not self.winfo_exists():
+            return
         # Cancel previous
         self.stop_auto_update_highlight()
         # Update immediately
@@ -5181,6 +5224,8 @@ class TeacherTimetableApp(BaseTk):
         tk.Button(button_frame, text="Cancel", command=dialog.destroy,
               bg=self.color_exit, fg=self.text_color, font=("Segoe UI", 11, "bold"),
               activebackground="#1174FD").pack(side=tk.LEFT, padx=6)
+        
+        dialog.bind('<Return>', lambda e: save())
     
     def edit_teacher_dialog(self):
         """Open edit teacher dialog"""
@@ -5297,6 +5342,8 @@ class TeacherTimetableApp(BaseTk):
         tk.Button(button_frame, text="Cancel", command=dialog.destroy,
             bg=self.color_exit, fg=self.text_color, font=("Segoe UI", 11, "bold"),
             activebackground="#4B5563").pack(side=tk.LEFT, padx=6)
+        
+        dialog.bind('<Return>', lambda e: update())
     
     def delete_teacher(self):
         """Delete selected teacher"""
@@ -5679,6 +5726,8 @@ class TeacherTimetableApp(BaseTk):
         
         ttk.Button(button_frame, text="Save", command=save).pack(side=tk.LEFT, padx=8)
         ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=8)
+        
+        dialog.bind('<Return>', lambda e: save())
     
     def edit_period_dialog(self, day=None, period=None, period_id=None):
         """Open edit period dialog. If day/period provided, use them to resolve period_id."""
@@ -5845,6 +5894,8 @@ class TeacherTimetableApp(BaseTk):
         
         tk.Button(button_frame, text="Update", command=update, font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=8)
         tk.Button(button_frame, text="Cancel", command=dialog.destroy, font=("Segoe UI", 11)).pack(side=tk.LEFT, padx=8)
+        
+        dialog.bind('<Return>', lambda e: update())
     
     def delete_period(self, day=None, period=None, period_id=None):
         """Delete a period by id or by day/period."""
@@ -6194,14 +6245,14 @@ class TeacherTimetableApp(BaseTk):
                     pass
             self.center_window(*getattr(self, "default_size", (1200, 800)))
 
-        def center_window(self, width, height):
-            """Center the window for the given width and height."""
-            self.update_idletasks()
-            screen_w = self.winfo_screenwidth()
-            screen_h = self.winfo_screenheight()
-            x = int((screen_w - width) / 2)
-            y = int((screen_h - height) / 2)
-            self.geometry(f"{width}x{height}+{x}+{y}")
+    def center_window(self, width, height):
+        """Center the window for the given width and height."""
+        self.update_idletasks()
+        screen_w = self.winfo_screenwidth()
+        screen_h = self.winfo_screenheight()
+        x = int((screen_w - width) / 2)
+        y = int((screen_h - height) / 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def manage_colors_dialog(self):
         """Open dialog to manage highlight and text colors."""
@@ -6367,6 +6418,8 @@ class TeacherTimetableApp(BaseTk):
             bg=self.color_add, fg=self.text_color, font=("Segoe UI", 11, "bold"), activebackground="#059669", cursor="hand2").pack(side=tk.LEFT, padx=6)
         tk.Button(button_frame, text="Cancel", command=dialog.destroy,
             bg="#6B7280", fg=self.text_color, font=("Segoe UI", 11, "bold"), activebackground="#4B5563", cursor="hand2").pack(side=tk.LEFT, padx=6)
+        
+        dialog.bind('<Return>', lambda e: save_interval())
 
     def show_about_dialog(self):
         """Show about dialog with app information."""
@@ -6406,7 +6459,8 @@ class TeacherTimetableApp(BaseTk):
         desc_text = ttk.Label(desc_frame, 
                              text="A modern timetable management system designed for educational institutions. "
                                   "Manage teacher information, create and edit timetables, track attendance, "
-                                  "and maintain period schedules with ease.",
+                                  "and maintain period schedules with ease. Featuring a clean, intuitive interface "
+                                  "and configurable security options.",
                              font=("Segoe UI", 10), wraplength=580, justify="left")
         desc_text.pack(anchor="w")
         
@@ -6426,7 +6480,8 @@ class TeacherTimetableApp(BaseTk):
             "• 📊 Teacher attendance tracking",
             "• 📤 Import/export functionality",
             "• 🎨 Automatic subject color coding",
-            "• ⌨️ Keyboard shortcuts for efficiency"
+            "• ⌨️ Keyboard shortcuts for efficiency",
+            "• 🔒 Optional password protection"
         ]
         
         for feature in features:
@@ -6486,7 +6541,7 @@ class TeacherTimetableApp(BaseTk):
         # Bind mousewheel
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        dlg.bind("<MouseWheel>", _on_mousewheel)
         
         # Content
         sections = [
@@ -6528,6 +6583,12 @@ class TeacherTimetableApp(BaseTk):
                 "• Single-subject teachers show only class name",
                 "• Status area shows current time and next class",
                 "• Keyboard shortcuts available (see Help → Keyboard Shortcuts)"
+            ]),
+            ("🔐 Login and Security", [
+                "• Password protection on startup for security",
+                "• Option to disable login via Tools → Disable Login",
+                "• Change password anytime via Tools → Change Password",
+                "• Secure password hashing for data protection"
             ])
         ]
         
@@ -6882,6 +6943,7 @@ Mouse:
         
         ttk.Radiobutton(status_frame, text="Present", variable=status_var, value="Present").pack(side=tk.LEFT, padx=10)
         ttk.Radiobutton(status_frame, text="Absent", variable=status_var, value="Absent").pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(status_frame, text="Reached", variable=status_var, value="Reached").pack(side=tk.LEFT, padx=10)
         
         # Remark (optional)
         ttk.Label(frm, text="Remark (optional):", style="Normal.TLabel").pack(anchor="w", pady=(10, 5))
@@ -6912,6 +6974,21 @@ Mouse:
                     return
                 
                 if self.upsert_attendance(teacher_id, date_str, status, remark):
+                    if status == "Reached" and self.supabase:
+                        try:
+                            # For manual entry, we don't have current class, so perhaps skip or use empty
+                            self.supabase.table('teacher_reached_logs').insert({
+                                'teacher_id': teacher_id,
+                                'name': teacher_names[sel_idx],
+                                'class': '',
+                                'room': '',
+                                'period': 0,
+                                'date': date_str,
+                                'reached_timestamp': datetime.datetime.now().isoformat(),
+                                'confirmation_source': 'main_app'
+                            }).execute()
+                        except Exception:
+                            pass
                     messagebox.showinfo("Success", f"Attendance marked for {teacher_names[sel_idx]} on {date_str}.")
                     try:
                         # Refresh details panel so buttons disappear when attendance exists
@@ -6925,7 +7002,451 @@ Mouse:
         ttk.Button(btn_frame, text="Save", command=save_attendance).pack(side=tk.RIGHT, padx=5)
         ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side=tk.RIGHT, padx=5)
         
+        dlg.bind('<Return>', lambda e: save_attendance())
+        
         dlg.wait_window()
+
+
+    def set_supabase_settings_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Set Supabase Settings")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        # Center dialog over parent
+        dialog.update_idletasks()
+        w, h = 480, 220
+        x = self.winfo_rootx() + max(0, (self.winfo_width() - w) // 2)
+        y = self.winfo_rooty() + max(0, (self.winfo_height() - h) // 2)
+        dialog.geometry(f"{w}x{h}+{x}+{y}")
+
+        # Configure dialog grid
+        dialog.rowconfigure(0, weight=1)
+        dialog.columnconfigure(0, weight=1)
+
+        # Content frame with padding
+        content = ttk.Frame(dialog, padding=10)
+        content.grid(row=0, column=0, sticky='nsew')
+        content.columnconfigure(1, weight=1)
+
+        label_url = ttk.Label(content, text="Supabase URL:")
+        label_url.grid(row=0, column=0, sticky='w', pady=4)
+        label_url.config(font=("Segoe UI", 14))
+        url_entry = ttk.Entry(content)
+        url_entry.grid(row=0, column=1, sticky='ew', pady=4)
+        url_entry.insert(0, self.supabase_url)
+        url_entry.config(font=("Segoe UI", 14))
+
+        label_key = ttk.Label(content, text="Supabase Key:")
+        label_key.grid(row=1, column=0, sticky='w', pady=4)
+        label_key.config(font=("Segoe UI", 14))
+        key_var = tk.StringVar(value=self.supabase_key)
+        key_entry = ttk.Entry(content, textvariable=key_var, show='*')
+        key_entry.grid(row=1, column=1, sticky='ew', pady=4)
+        key_entry.config(font=("Segoe UI", 14))
+
+        # Show/hide key checkbox
+        show_key_var = tk.BooleanVar(value=False)
+        def toggle_key():
+            key_entry.config(show='' if show_key_var.get() else '*')
+        check_show = tk.Checkbutton(content, text='Show key', variable=show_key_var, command=toggle_key, font=("Segoe UI", 12))
+        check_show.grid(row=1, column=2, sticky='w', padx=(6,0))
+
+        label_pass = ttk.Label(content, text="Classroom Password:")
+        label_pass.grid(row=2, column=0, sticky='w', pady=4)
+        label_pass.config(font=("Segoe UI", 14))
+        pass_entry = ttk.Entry(content)
+        pass_entry.grid(row=2, column=1, sticky='ew', pady=4)
+        pass_entry.insert(0, self.classroom_password)
+        pass_entry.config(font=("Segoe UI", 14))
+
+        # Buttons
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.grid(row=1, column=0, sticky='ew', padx=10, pady=(0,10))
+        btn_frame.columnconfigure(0, weight=1)
+
+        def save():
+            self.supabase_url = url_entry.get().strip()
+            self.supabase_key = key_var.get().strip()
+            self.classroom_password = pass_entry.get().strip()
+            self.save_setting('supabase_url', self.supabase_url)
+            self.save_setting('supabase_key', self.supabase_key)
+            self.save_setting('classroom_password', self.classroom_password)
+            if self.supabase_url and self.supabase_key and create_client:
+                try:
+                    self.supabase = create_client(self.supabase_url, self.supabase_key)
+                except Exception:
+                    self.supabase = None
+            dialog.destroy()
+
+        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy, style="Dialog.TButton").grid(row=0, column=0, sticky='w')
+        ttk.Button(btn_frame, text="Save", command=save, style="Dialog.TButton").grid(row=0, column=1, sticky='e')
+
+        dialog.bind('<Return>', lambda e: save())
+        dialog.bind('<Escape>', lambda e: dialog.destroy())
+        try:
+            dialog.grab_set()
+            dialog.focus_force()
+            dialog.lift()
+        except Exception:
+            pass
+
+    def export_classroom_settings(self):
+        file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")])
+        if not file_path:
+            return
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT teacher_id, day_of_week, period_number, class_name, subject FROM timetable ORDER BY day_of_week, period_number")
+        timetable = cursor.fetchall()
+        cursor.execute("SELECT period_number, start, end FROM period_times ORDER BY period_number")
+        period_times = cursor.fetchall()
+        conn.close()
+        data = {
+            'supabase_url': self.supabase_url,
+            'supabase_key': self.supabase_key,
+            'classroom_password': self.classroom_password,
+            'timetable': timetable,
+            'period_times': period_times
+        }
+        import json
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(data, f)
+            messagebox.showinfo("Success", "Settings exported")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export: {e}")
+
+    def view_reached_logs(self):
+        if not self.supabase:
+            messagebox.showerror("Error", "Supabase not configured")
+            return
+        try:
+            response = self.supabase.table('teacher_reached_logs').select('*').execute()
+            logs = response.data
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to fetch logs: {e}")
+            return
+        
+        # Function to insert a log into the tree
+        def insert_log(tree, log):
+            period = log['period']
+            if period in self.period_times:
+                start, end = self.period_times[period]
+                period_time = f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
+                reached_dt = datetime.datetime.fromisoformat(log['reached_timestamp'])
+                reached_time = reached_dt.time()
+                def time_to_minutes(t):
+                    return t.hour * 60 + t.minute
+                diff_minutes = time_to_minutes(reached_time) - time_to_minutes(start)
+                if diff_minutes > 0:
+                    diff_str = f"Late {diff_minutes} min"
+                elif diff_minutes < 0:
+                    diff_str = f"Early {abs(diff_minutes)} min"
+                else:
+                    diff_str = "On time"
+            else:
+                period_time = ''
+                diff_str = ''
+            time_only = datetime.datetime.fromisoformat(log['reached_timestamp']).strftime('%H:%M')
+            date_formatted = datetime.datetime.strptime(log['date'], '%Y-%m-%d').strftime('%d-%m-%Y')
+            tree.insert("", "end", values=(log['name'], log['class'], log['period'], date_formatted, period_time, time_only, diff_str))
+        
+        # Function to filter logs
+        def filter_logs():
+            query = search_var.get().strip().lower()
+            tree.delete(*tree.get_children())
+            for log in logs:
+                if not query or query in log['name'].lower() or query in log['class'].lower():
+                    insert_log(tree, log)
+        
+        dialog = tk.Toplevel(self)
+        dialog.title("Reached Logs")
+        dialog.geometry("1500x600")
+        
+        # Search bar
+        search_frame = ttk.Frame(dialog)
+        search_frame.pack(fill=tk.X, pady=(10, 5), padx=10)
+        ttk.Label(search_frame, text="Search:",font=("Segoe UI", 14)).pack(side=tk.LEFT)
+        search_var = tk.StringVar()
+        search_entry = tk.Entry(search_frame, textvariable=search_var, font=("Segoe UI", 14), width=36)
+        search_entry.pack(side=tk.LEFT, padx=(5,0))
+        
+        # Bind search
+        search_entry.bind("<KeyRelease>", lambda e: filter_logs())
+        
+        tree = ttk.Treeview(dialog, columns=("name", "class", "period", "date", "start_time", "timestamp", "difference"), show="headings")
+        tree.heading("name", text="Teacher")
+        tree.heading("class", text="Class")
+        tree.heading("period", text="Period")
+        tree.heading("date", text="Date")
+        tree.heading("start_time", text="Period Start–End")
+        tree.heading("timestamp", text="Time Reached")
+        tree.heading("difference", text="Difference")
+        for col in tree['columns']:
+            tree.column(col, anchor='center')
+            tree.heading(col, anchor='center')
+        
+        # Initial load
+        filter_logs()
+        
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def add_classroom_dialog(self):
+        if not self.supabase:
+            messagebox.showerror("Error", "Supabase not configured")
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Add Classrooms")
+        dialog.geometry("600x500")
+        
+        # Get all unique class names from timetable, excluding Free classes, and normalize
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT class_name FROM timetable WHERE subject != 'Free'")
+        raw_classes = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        # Normalize class names: uppercase, remove hyphens
+        def normalize(name):
+            return name.upper().replace('-', '').replace(' ', '')
+        
+        classes = list(set(normalize(cls) for cls in raw_classes))
+        classes.sort()
+        
+        if not classes:
+            messagebox.showerror("Error", "No classes found in timetable")
+            dialog.destroy()
+            return
+        
+        # Fetch existing classrooms from Supabase
+        existing = {}
+        try:
+            response = self.supabase.table('classrooms').select('name,password').execute()
+            existing = {normalize(row['name']): row['password'] for row in response.data}
+        except Exception:
+            pass
+        
+        ttk.Label(dialog, text="Set passwords for classrooms:", font=("Segoe UI", 14, "bold")).pack(pady=10)
+        
+        # Show/Hide password button
+        show_var = tk.BooleanVar()
+        ttk.Checkbutton(dialog, text="Show Passwords", variable=show_var, command=lambda: toggle_visibility()).pack(pady=5)
+        
+        # Frame for the list
+        frame = ttk.Frame(dialog)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Canvas and scrollbar for scrolling
+        canvas = tk.Canvas(frame)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Bind mousewheel for scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        dialog.bind("<MouseWheel>", _on_mousewheel)
+        
+        # Dictionary to store password entries
+        password_entries = {}
+        
+        def toggle_visibility():
+            show = show_var.get()
+            for entry in password_entries.values():
+                entry.config(show="" if show else "*")
+        
+        for cls in classes:
+            row_frame = ttk.Frame(scrollable_frame)
+            row_frame.pack(fill=tk.X, pady=2)
+            ttk.Label(row_frame, text=cls, width=20, font=("Segoe UI", 12)).pack(side=tk.LEFT, padx=5)
+            entry = ttk.Entry(row_frame, show="*", font=("Segoe UI", 12))
+            if cls in existing:
+                entry.insert(0, existing[cls])
+            entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            password_entries[cls] = entry
+        
+        def add_selected():
+            # Get timetable and period_times once
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+SELECT t.teacher_id, t.day_of_week, t.period_number, t.class_name, teachers.name 
+FROM timetable t 
+JOIN teachers ON t.teacher_id = teachers.id 
+ORDER BY t.day_of_week, t.period_number
+""")
+            timetable = cursor.fetchall()
+            cursor.execute("SELECT period_number, start, end FROM period_times ORDER BY period_number")
+            period_times = cursor.fetchall()
+            conn.close()
+            import json
+            timetable_json = json.dumps(timetable)
+            period_times_json = json.dumps(period_times)
+            
+            added = 0
+            updated = 0
+            for cls, entry in password_entries.items():
+                password = entry.get().strip()
+                if password:
+                    norm_cls = normalize(cls)
+                    try:
+                        if norm_cls in existing:
+                            # Update existing
+                            self.supabase.table('classrooms').update({
+                                'password': password,
+                                'timetable_json': timetable_json,
+                                'period_times_json': period_times_json
+                            }).eq('name', norm_cls).execute()
+                            updated += 1
+                        else:
+                            # Insert new
+                            self.supabase.table('classrooms').insert({
+                                'name': norm_cls,
+                                'password': password,
+                                'timetable_json': timetable_json,
+                                'period_times_json': period_times_json
+                            }).execute()
+                            added += 1
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to save {cls}: {e}")
+            if added > 0 or updated > 0:
+                messagebox.showinfo("Success", f"Added {added}, Updated {updated} classrooms")
+                dialog.destroy()
+            else:
+                messagebox.showwarning("Warning", "No changes made")
+        
+        ttk.Button(dialog, text="Save Changes", command=add_selected, style="TButton").pack(pady=10)
+        
+        dialog.bind('<Return>', lambda e: add_selected())
+
+    def manage_classrooms_dialog(self):
+        if not self.supabase:
+            messagebox.showerror("Error", "Supabase not configured")
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Manage Classrooms")
+        dialog.geometry("600x400")
+        
+        # List existing classrooms
+        tree = ttk.Treeview(dialog, columns=("name", "password"), show="headings")
+        tree.heading("name", text="Classroom Name")
+        tree.heading("password", text="Password")
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Load classrooms
+        try:
+            response = self.supabase.table('classrooms').select('name,password').execute()
+            for row in response.data:
+                tree.insert("", "end", values=(row['name'], row['password']))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load classrooms: {e}")
+        
+        # Buttons
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        def add_classroom():
+            name = simpledialog.askstring("Add Classroom", "Classroom Name:")
+            if not name:
+                return
+            password = simpledialog.askstring("Add Classroom", "Password:")
+            if not password:
+                return
+            # Normalize name
+            norm_name = name.upper().replace('-', '').replace(' ', '')
+            # Get timetable and period_times
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT teacher_id, day_of_week, period_number, class_name, subject FROM timetable ORDER BY day_of_week, period_number")
+            timetable = cursor.fetchall()
+            cursor.execute("SELECT period_number, start, end FROM period_times ORDER BY period_number")
+            period_times = cursor.fetchall()
+            conn.close()
+            import json
+            timetable_json = json.dumps(timetable)
+            period_times_json = json.dumps(period_times)
+            try:
+                self.supabase.table('classrooms').insert({
+                    'name': norm_name,
+                    'password': password,
+                    'timetable_json': timetable_json,
+                    'period_times_json': period_times_json
+                }).execute()
+                tree.insert("", "end", values=(norm_name, password))
+                messagebox.showinfo("Success", "Classroom added")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to add: {e}")
+        
+        def delete_classroom():
+            selected = tree.selection()
+            if not selected:
+                return
+            item = tree.item(selected[0])
+            name = item['values'][0]
+            try:
+                self.supabase.table('classrooms').delete().eq('name', name).execute()
+                tree.delete(selected[0])
+                messagebox.showinfo("Success", "Classroom deleted")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete: {e}")
+        
+        ttk.Button(btn_frame, text="Add Classroom", command=add_classroom).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Delete Selected", command=delete_classroom).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+
+    def sync_classrooms_to_supabase(self):
+        """Sync all existing classrooms in Supabase with current local timetable and period data."""
+        if not self.supabase:
+            return
+        try:
+            # Get all classrooms from Supabase
+            response = self.supabase.table('classrooms').select('id, name').execute()
+            classrooms = response.data
+            if not classrooms:
+                return
+        except Exception:
+            return
+        
+        # Get current timetable and periods
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+SELECT t.teacher_id, t.day_of_week, t.period_number, t.class_name, teachers.name 
+FROM timetable t 
+JOIN teachers ON t.teacher_id = teachers.id 
+ORDER BY t.day_of_week, t.period_number
+""")
+        timetable = cursor.fetchall()
+        cursor.execute("SELECT period_number, start, end FROM period_times ORDER BY period_number")
+        period_times = cursor.fetchall()
+        conn.close()
+        
+        import json
+        timetable_json = json.dumps(timetable)
+        period_times_json = json.dumps(period_times)
+        
+        # Update each classroom
+        for cls in classrooms:
+            try:
+                self.supabase.table('classrooms').update({
+                    'timetable_json': timetable_json,
+                    'period_times_json': period_times_json
+                }).eq('id', cls['id']).execute()
+            except Exception as e:
+                print(f"Failed to sync {cls['name']}: {e}")
 
 
     class CalendarPicker(tk.Toplevel):
@@ -7638,4 +8159,7 @@ Mouse:
 
 if __name__ == "__main__":
     app = TeacherTimetableApp()
-    app.mainloop()
+    try:
+        app.mainloop()
+    except Exception:
+        pass
