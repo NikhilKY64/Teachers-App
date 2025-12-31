@@ -5,7 +5,7 @@ You can download the official Windows installer from the **Releases** page:
 👉 https://github.com/NikhilKY64/Teachers-App/releases
 
 ### How to install
-1. Download the file named **TeacherAppSetup.exe**
+1. Download the file named **TeacherAppSetup.exe** from releaase.
 2. Right-click the file → **Scan with Microsoft Defender** (recommended)
 3. Double-click to open the installer
 4. If Windows SmartScreen shows a message saying  
