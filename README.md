@@ -1,3 +1,5 @@
+![GitHub all releases](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total.svg)
+
 # Teachers App
 
 The Teachers App is a desktop application built using Python and Tkinter to help schools manage and view teacher timetables. The app includes features such as timetable viewing, searching, data import/export, blinking highlight for ongoing classes, and database backup/restore.
