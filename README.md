@@ -1,3 +1,7 @@
+![Teacher App](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/TeacherAppSetup.exe?label=Teacher%20App%20Setup&color=blue&style=for-the-badge)
+![Class Status](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/ClassStatusSetup.exe?label=Class%20Status%20Setup&color=orange&style=for-the-badge)
+
+
 ![TeacherAppSetup Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/TeacherAppSetup.exe)
 ![ClassStatusSetup Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/ClassStatusSetup.exe)
 ![v1.5.4](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.4/total)
