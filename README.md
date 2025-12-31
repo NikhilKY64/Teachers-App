@@ -1,28 +1,12 @@
 ![v2.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/TeacherAppSetup.exe)
 ![v2.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/ClassStatusSetup.exe)
 
-## 📊 Download Statistics
+![v1.5.4](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.4/total)
+![v1.5.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.2/total)
+![v1.5.1](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.1/total)
+![v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
+![v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
 
-### v2.0
-![Downloads v2.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/total)
-
-### v1.5.4
-![Downloads v1.5.4](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.4/total)
-
-### v1.5.2
-![Downloads v1.5.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.2/total)
-
-### v1.5.1
-![Downloads v1.5.1](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.1/total)
-
-### v1.4.2
-![Downloads v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
-
-### v1.0
-![Downloads v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
-
-### All Releases Total
-![Total Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total)
 
 ## 📥 Download & Install (Windows)
 
