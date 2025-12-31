@@ -1,13 +1,26 @@
-## 📊 Downloads
+## 📊 Download Statistics
 
-### App-v2.0
-![v2.0 Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/App-v2.0/total)
+### v2.0
+![Downloads v2.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/total)
 
-### App-v1.5
-![v1.5 Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/App-v1.5/total)
+### v1.5.4
+![Downloads v1.5.4](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.4/total)
+
+### v1.5.2
+![Downloads v1.5.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.2/total)
+
+### v1.5.1
+![Downloads v1.5.1](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.1/total)
+
+### v1.4.2
+![Downloads v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
+
+### v1.0
+![Downloads v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
 
 ### All Releases Total
-![Total Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total.svg)
+![Total Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total)
+
 
 # Teachers App
 
