@@ -1,4 +1,13 @@
-![GitHub all releases](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total.svg)
+## 📊 Downloads
+
+### App-v2.0
+![v2.0 Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/App-v2.0/total)
+
+### App-v1.5
+![v1.5 Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/App-v1.5/total)
+
+### All Releases Total
+![Total Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total.svg)
 
 # Teachers App
 
