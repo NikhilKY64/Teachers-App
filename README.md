@@ -7,9 +7,6 @@
 ![v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
 ![v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
 
-![Teacher App](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.4/total?label=Teacher%20App%20Setup&color=blue&style=for-the-badge)
-![Class Status](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v2.0/ClassStatusSetup.exe?label=Class%20Status%20Setup&color=orange&style=for-the-badge)
-
 ## 📥 Download & Install (Windows)
 
 You can download the official Windows installer from the **Releases** page:
