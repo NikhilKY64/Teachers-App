@@ -6,8 +6,9 @@
 ![v1.5.1](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.1/total)
 ![v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
 ![v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
+![v.0](https://img.shields.io/github/downloads/OWNER/REPO/TAG/FILENAME)
 
-https://img.shields.io/github/downloads/OWNER/REPO/TAG/FILENAME
+
 
 
 ## 📥 Download & Install (Windows)
