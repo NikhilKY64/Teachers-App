@@ -20,8 +20,11 @@
 
 ### v1.5.1
 ![Downloads v1.5.1](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.5.1/total)
+
 ![Downloads v1.4.2](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.4.2/total)
+
 ![Downloads v1.0](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/v1.0/total)
+
 ![Total Downloads](https://img.shields.io/github/downloads/NikhilKY64/Teachers-App/total)
 
 
