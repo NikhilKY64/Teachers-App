@@ -65,8 +65,8 @@ Open the "Teachers App.exe" , shotcut created on desktop.
 ```
 Teachers-App/
 |
-├── Teachers App.py                                  # App code
-└── database.db -OR- School.db (In Old verson)       # SQLite database
+├── Teachers App.py                                 # App code
+└── database.db -OR- School.db (In Old verson)      # SQLite database
 ```
 
 ---
