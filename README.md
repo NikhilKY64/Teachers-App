@@ -24,7 +24,7 @@ You can download the official Windows installer from the **Releases** page:
    - Click **Run anyway**
 
 This message appears because the app is **new and unsigned**.  
-It is safe to continue if you downloaded it from this GitHub page.
+It is safe to continue if you downloaded it from this GitHub page **Or** form https://nikhilky64.vercel.app .
 
 ### Uninstall
 You can uninstall Teacher App anytime from:
